@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Happiness Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .video-feed {
+            width: 100%;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+        .session-table {
+            margin-top: 20px;
+        }
+        .happiness-indicator {
+            height: 10px;
+            background: linear-gradient(to right, red, yellow, green);
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">Customer Happiness Tracker</h1>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="video-container">
+                    <img src="{{ url_for('video_feed') }}" class="video-feed">
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">New Customer Session</h5>
+                        <form id="sessionForm">
+                            <div class="mb-3">
+                                <label for="customerName" class="form-label">Customer Name</label>
+                                <input type="text" class="form-control" id="customerName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="serverName" class="form-label">Server Name</label>
+                                <input type="text" class="form-control" id="serverName">
+                            </div>
+                            <div class="mb-3">
+                                <label for="orderDetails" class="form-label">Order Details</label>
+                                <textarea class="form-control" id="orderDetails" rows="3"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Start Session</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="session-table">
+            <h3 class="mt-4">Recent Sessions</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Happiness Score</th>
+                        <th>Entry Time</th>
+                        <th>Service Time</th>
+                        <th>Server</th>
+                        <th>Order</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionsTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentSessionId = null;
+
+        function updateSessionsTable() {
+            fetch('/api/sessions')
+                .then(response => response.json())
+                .then(sessions => {
+                    const tableBody = document.getElementById('sessionsTable');
+                    tableBody.innerHTML = '';
+                    
+                    sessions.forEach(session => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${session.customer_name}</td>
+                            <td>
+                                ${(session.happiness_score * 100).toFixed(1)}%
+                                <div class="happiness-indicator" style="width: ${session.happiness_score * 100}px"></div>
+                            </td>
+                            <td>${new Date(session.entry_time).toLocaleString()}</td>
+                            <td>${session.service_time ? `${session.service_time}s` : '-'}</td>
+                            <td>${session.server_name || '-'}</td>
+                            <td>${session.order_details || '-'}</td>
+                            <td>
+                                ${!session.exit_time ? `<button class="btn btn-sm btn-danger" onclick="completeSession(${session.id})">Exit</button>` : '✔️'}
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                });
+        }
+
+        document.getElementById('sessionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const sessionData = {
+                customer_name: document.getElementById('customerName').value,
+                server_name: document.getElementById('serverName').value,
+                order_details: document.getElementById('orderDetails').value,
+                happiness_score: 0.5
+            };
+
+            fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sessionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                currentSessionId = data.id;
+                updateSessionsTable();
+                this.reset();
+            });
+        });
+
+        function completeSession(sessionId) {
+            fetch(`/api/sessions/${sessionId}/complete`, {
+                method: 'PUT'
+            })
+            .then(() => {
+                if (sessionId === currentSessionId) currentSessionId = null;
+                updateSessionsTable();
+            });
+        }
+
+        function updateHappinessLive() {
+            if (!currentSessionId) return;
+
+            fetch('/api/happiness_score')
+                .then(response => response.json())
+                .then(data => {
+                    fetch(`/api/sessions/${currentSessionId}/score`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ happiness_score: data.happiness_score })
+                    });
+                });
+        }
+
+        setInterval(updateSessionsTable, 5000);
+        setInterval(updateHappinessLive, 3000);
+        updateSessionsTable();
+    </script>
+</body>
+</html>
